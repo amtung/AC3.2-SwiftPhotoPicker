@@ -8,20 +8,28 @@
 
 import UIKit
 import AVFoundation
+import AVKit
+import MobileCoreServices
 
 class ViewController: UIViewController, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    
+    // MARK: - Properties
+    
     @IBOutlet weak var imageView: UIImageView!
-    var capturedImages: [UIImage]! = []
     var imagePickerController: UIImagePickerController!
+    var capturedImages: [UIImage]! = []
+    var videoURL: URL?
     
     @IBOutlet var overlayView: UIView!
     @IBOutlet weak var takePictureButton: UIBarButtonItem!
     @IBOutlet weak var startStopButton: UIBarButtonItem!
     @IBOutlet weak var delayedPhotoButton: UIBarButtonItem!
     @IBOutlet weak var doneButton: UIBarButtonItem!
+    @IBOutlet weak var recordButton: UIBarButtonItem!
     
-    // for delayed and repeated pictures
-    weak var cameraTimer: Timer?
+    weak var cameraTimer: Timer? // for delayed and repeated pictures
+    
+    // MARK: - ViewDidLoad
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -60,6 +68,8 @@ class ViewController: UIViewController, UIImagePickerControllerDelegate, UINavig
         imagePickerController.sourceType = sourceType
         imagePickerController.delegate = self
         imagePickerController.modalPresentationStyle = (sourceType == .camera) ? .fullScreen : .popover
+        // Picker's interface
+        imagePickerController.mediaTypes = [String(kUTTypeMovie), String(kUTTypeImage)]
         
         if let presentationController = imagePickerController.popoverPresentationController {
             presentationController.barButtonItem = button
@@ -88,7 +98,7 @@ class ViewController: UIViewController, UIImagePickerControllerDelegate, UINavig
     @IBAction func showImagePickerForCamera(sender: UIBarButtonItem) {
         let authStatus = AVCaptureDevice.authorizationStatus(forMediaType: AVMediaTypeVideo)
         if authStatus == .denied {
-        
+            
         }
         else if authStatus == .notDetermined {
             AVCaptureDevice.requestAccess(forMediaType: AVMediaTypeVideo) { (granted: Bool) in
@@ -104,84 +114,160 @@ class ViewController: UIViewController, UIImagePickerControllerDelegate, UINavig
     }
     
     private func finishAndUpdate() {
-        self.dismiss(animated: true, completion: nil)
-        
+        self.dismiss(animated: true) {
+            print("Dismissing")
+            //            if let url = self.videoURL {
+            //                let remoteURLString = "https://content.uplynk.com/7dd85b057b134b14afdb3d710398c2a8.m3u8"
+            //                if let remoteURL = URL(string: remoteURLString) {
+            //                    let player = AVPlayer(url: remoteURL)
+            //                    let playerController = AVPlayerViewController()
+            //
+            //                    playerController.player = player
+            //                    self.present(playerController, animated: true, completion: {
+            //                        print("I present myself")
+            //                    })
+            //                    player.play()
+            //                    self.videoURL = nil
+            //                }
+            //OPENS A REMOTE URL
+            
+            if let url = self.videoURL {
+                let player = AVPlayer(url: url)
+                let playerController = AVPlayerViewController()
+                
+                playerController.player = player
+                self.present(playerController, animated: true, completion: {
+                    print("I present myself")
+                })
+                player.play()
+                self.videoURL = nil
+            }
+        }
         if self.capturedImages.count > 0 {
-            self.imageView.image = self.capturedImages[0]
+            if self.capturedImages.count == 1 {
+                self.imageView.image = self.capturedImages[0]
+            }
+            else {
+                self.imageView.animationImages = self.capturedImages
+                self.imageView.animationDuration = 5.0
+                self.imageView.animationRepeatCount = 0
+                self.imageView.startAnimating()
+            }
         }
         self.capturedImages.removeAll()
-        self.imagePickerController = nil
     }
     
+    if self.capturedImages.count > 0 {
+    if self.capturedImages.count == 1 {
+    self.imageView.image = self.capturedImages[0]
+    }
+    else {
+    self.imageView.animationImages = self.capturedImages
+    self.imageView.animationDuration = 5.0
+    self.imageView.animationRepeatCount = 0
+    self.imageView.startAnimating()
+    }
+    }
+    self.capturedImages.removeAll()
+}
 
-    // MARK: - UIImagePickerControllerDelegate
-    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [String : Any]) {
+
+
+// MARK: - UIImagePickerControllerDelegate
+
+func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [String : Any]) { // didFinishPicking tells the delegate that the user picked a still image or movie.
+    
+    switch info[UIImagePickerControllerMediaType] as! String {
+    case String(kUTTypeImage):
         if let image = info[UIImagePickerControllerOriginalImage] as? UIImage {
             self.capturedImages.append(image)
         }
-        
         if let timer = self.cameraTimer,
             timer.isValid {
             print("continuing to snap until the user hits done")
             return
         }
-        
-        self.finishAndUpdate()
-    }
-    
-    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-        self.dismiss(animated: true, completion: nil)
-    }
-
-    // MARK: - Overlay Actions
-    @IBAction func done(sender: UIBarButtonItem) {
-        if let timer = self.cameraTimer,
-            timer.isValid {
-            timer.invalidate()
+    case String(kUTTypeMovie):
+        if let url = info[UIImagePickerControllerMediaURL] as? URL {  // UIImagePickerControllerReferenceURL
+            self.videoURL = url
+        } else {
+            print("Error getting url from picked asset")
         }
-        self.finishAndUpdate()
+    default:
+        print("Bad media type")
     }
-    
-    @IBAction func takePhoto(sender: UIBarButtonItem) {
-        self.imagePickerController.takePicture()
+    self.finishAndUpdate()
+}
+
+func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+    self.dismiss(animated: true, completion: nil)
+}
+
+// MARK: - Overlay Actions
+
+@IBAction func done(sender: UIBarButtonItem) {
+    if let timer = self.cameraTimer,
+        timer.isValid {
+        timer.invalidate()
     }
+    self.finishAndUpdate()
+}
+
+@IBAction func takePhoto(sender: UIBarButtonItem) {
+    self.imagePickerController.takePicture()
+}
+
+@IBAction func delayedTakePhoto(sender: UIBarButtonItem) {
+    self.doneButton.isEnabled = false
+    self.takePictureButton.isEnabled = false
+    self.delayedPhotoButton.isEnabled = false
+    self.startStopButton.isEnabled = false
     
-    @IBAction func delayedTakePhoto(sender: UIBarButtonItem) {
-        self.doneButton.isEnabled = false
-        self.takePictureButton.isEnabled = false
-        self.delayedPhotoButton.isEnabled = false
-        self.startStopButton.isEnabled = false
-        
-        let fireDate = Date(timeIntervalSinceNow: 5.0)
-        let cameraTimer = Timer(fireAt: fireDate, interval: 1.0, target: self, selector: #selector(timedPhotoFire(timer:)), userInfo:nil, repeats: false)
-        
-        RunLoop.main.add(cameraTimer, forMode: .defaultRunLoopMode)
-        self.cameraTimer = cameraTimer
+    let fireDate = Date(timeIntervalSinceNow: 5.0)
+    let cameraTimer = Timer(fireAt: fireDate, interval: 1.0, target: self, selector: #selector(timedPhotoFire(timer:)), userInfo:nil, repeats: false)
+    
+    RunLoop.main.add(cameraTimer, forMode: .defaultRunLoopMode)
+    self.cameraTimer = cameraTimer
+}
+
+@IBAction func startTakingPicturesAtIntervals(sender: UIBarButtonItem) {
+    self.startStopButton.title = NSLocalizedString("Stop", comment: "Why is this suddenly so important")
+    self.startStopButton.action = #selector(stopTakingPicturesAtIntervals(sender:))
+    self.doneButton.isEnabled = false
+    self.delayedPhotoButton.isEnabled = false
+    self.takePictureButton.isEnabled = false
+    // will happen every 1.5 seconds
+    let cameraTimer = Timer(timeInterval: 1.5, target: self, selector: #selector(timedPhotoFire(timer:)), userInfo: nil, repeats: true)
+    // setting up timer because timer is on a different thread
+    RunLoop.main.add(cameraTimer, forMode: .defaultRunLoopMode)
+    cameraTimer.fire()
+    self.cameraTimer = cameraTimer
+}
+
+@IBAction func stopTakingPicturesAtIntervals(sender: UIBarButtonItem) {
+    self.cameraTimer?.invalidate()
+    self.cameraTimer = nil
+    self.finishAndUpdate()
+}
+
+@IBAction func recordButtonTapped(_ sender: UIBarButtonItem) {
+    if sender.title == "Record" {
+        self.imagePickerController.cameraCaptureMode = .video
+        self.imagePickerController.startVideoCapture()
+        recordButton.title = "Pause"
     }
-    
-    @IBAction func startTakingPicturesAtIntervals(sender: UIBarButtonItem) {
-        self.startStopButton.title = NSLocalizedString("Stop", comment: "Why is this suddenly so important")
-        self.startStopButton.action = #selector(stopTakingPicturesAtIntervals(sender:))
-        self.doneButton.isEnabled = false
-        self.delayedPhotoButton.isEnabled = false
-        self.takePictureButton.isEnabled = false
-        let cameraTimer = Timer(timeInterval: 1.5, target: self, selector: #selector(timedPhotoFire(timer:)), userInfo: nil, repeats: true)
-        RunLoop.main.add(cameraTimer, forMode: .defaultRunLoopMode)
-        cameraTimer.fire()
-        self.cameraTimer = cameraTimer
+    else {
+        self.imagePickerController.stopVideoCapture()
+        self.imagePickerController.cameraCaptureMode = .photo
+        recordButton.title = "Record"
     }
-    
-    @IBAction func stopTakingPicturesAtIntervals(sender: UIBarButtonItem) {
-        self.cameraTimer?.invalidate()
-        self.cameraTimer = nil
-        self.finishAndUpdate()
-    }
-    
-    // MARK: - Timer
-    
-    // Called by the timer to take a picture.
-    func timedPhotoFire(timer: Timer) {
-        self.imagePickerController.takePicture()
-    }
+}
+
+// MARK: - Timer
+
+// Called by the timer to take a picture.
+func timedPhotoFire(timer: Timer) {
+    self.imagePickerController.takePicture()
+}
 }
 
